@@ -4,28 +4,38 @@ export const getTopProducts = async (req, res, next) => {
   try {
     const { start, end, channel_id } = req.query;
 
+    const values = [start, end];
+    let whereClause = `WHERE s.created_at BETWEEN $1 AND $2`;
+
+    if (channel_id) {
+      values.push(channel_id);
+      whereClause += ` AND s.channel_id = $${values.length}`;
+    }
+
     const sql = `
       SELECT 
         p.name AS product_name,
-        SUM(ps.quantity) AS total_sold,
-        ROUND(SUM(ps.total_price)::numeric, 2) AS revenue
-      FROM product_sales ps
+        SUM(ps.quantity) AS total_sales,
+        SUM(ps.total_price) AS total_revenue
+      FROM sales s
+      JOIN product_sales ps ON ps.sale_id = s.id
       JOIN products p ON p.id = ps.product_id
-      JOIN sales s ON s.id = ps.sale_id
-      WHERE s.created_at BETWEEN $1 AND $2
-        AND ($3::int IS NULL OR s.channel_id = $3)
+      ${whereClause}
       GROUP BY p.name
-      ORDER BY total_sold DESC
+      ORDER BY total_revenue DESC
       LIMIT 10;
     `;
-
-    const values = [start, end, channel_id || null];
 
     const result = await query(sql, values);
 
     res.json({
       success: true,
-      data: result.rows,
+      params: { start, end, channel_id },
+      data: result.rows.map((r) => ({
+        product_name: r.product_name,
+        total_sales: Number(r.total_sales),
+        total_revenue: Number(Number(r.total_revenue).toFixed(2)),
+      })),
     });
   } catch (err) {
     next(err);

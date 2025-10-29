@@ -127,67 +127,76 @@ export const getFinancialOverview = async (req, res, next) => {
 export const getDashboardSummary = async (req, res, next) => {
   try {
     const { start, end } = req.query;
+    if (!start || !end) {
+      return res
+        .status(400)
+        .json({ success: false, message: "start e end são obrigatórios" });
+    }
 
-    const mainQuery = `
+    const sql = `
+      WITH params AS (
+        SELECT 
+          $1::date AS start_date,
+          $2::date AS end_date,
+          ($2::date - $1::date + 1) AS num_days
+      ),
+      current_period AS (
+        SELECT 
+          COUNT(*) AS total_sales,
+          SUM(total_amount) AS total_revenue,
+          AVG(total_amount) AS avg_ticket
+        FROM sales s, params p
+        WHERE s.created_at BETWEEN p.start_date AND p.end_date
+      ),
+      previous_period AS (
+        SELECT 
+          COUNT(*) AS total_sales,
+          SUM(total_amount) AS total_revenue,
+          AVG(total_amount) AS avg_ticket
+        FROM sales s, params p
+        WHERE s.created_at BETWEEN 
+          (p.start_date - (p.num_days || ' days')::interval) AND 
+          (p.start_date - INTERVAL '1 day')
+      )
       SELECT 
-        COUNT(*) AS total_sales,
-        SUM(s.total_amount) AS total_revenue,
-        ROUND(AVG(s.total_amount)::numeric, 2) AS avg_ticket
-      FROM sales s
-      WHERE s.created_at BETWEEN $1 AND $2;
+        c.total_sales AS current_sales,
+        p.total_sales AS prev_sales,
+        c.total_revenue AS current_revenue,
+        p.total_revenue AS prev_revenue,
+        c.avg_ticket AS current_avg_ticket,
+        p.avg_ticket AS prev_avg_ticket
+      FROM current_period c, previous_period p;
     `;
-    const mainResult = await query(mainQuery, [start, end]);
-    const { total_sales, total_revenue, avg_ticket } = mainResult.rows[0];
 
-    const topProductsQuery = `
-      SELECT 
-        p.name AS product_name,
-        SUM(ps.quantity) AS total_quantity,
-        ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue
-      FROM product_sales ps
-      JOIN products p ON p.id = ps.product_id
-      JOIN sales s ON s.id = ps.sale_id
-      WHERE s.created_at BETWEEN $1 AND $2
-      GROUP BY p.name
-      ORDER BY total_quantity DESC
-      LIMIT 5;
-    `;
-    const topProductsResult = await query(topProductsQuery, [start, end]);
+    const values = [start, end];
+    const result = await query(sql, values);
+    const r = result.rows[0] || {};
 
-    const topChannelsQuery = `
-      SELECT 
-        c.name AS channel_name,
-        COUNT(s.id) AS total_sales,
-        ROUND(SUM(s.total_amount)::numeric, 2) AS total_revenue
-      FROM sales s
-      JOIN channels c ON c.id = s.channel_id
-      WHERE s.created_at BETWEEN $1 AND $2
-      GROUP BY c.name
-      ORDER BY total_revenue DESC
-      LIMIT 5;
-    `;
-    const topChannelsResult = await query(topChannelsQuery, [start, end]);
+    const safe = (v) =>
+      v === null || v === undefined || isNaN(v) ? 0 : Number(v);
 
-    res.json({
-      success: true,
-      data: {
-        totals: {
-          total_sales: Number(total_sales) || 0,
-          total_revenue: Number(total_revenue) || 0,
-          avg_ticket: Number(avg_ticket) || 0,
-        },
-        top_products: topProductsResult.rows.map((r) => ({
-          ...r,
-          total_quantity: Number(r.total_quantity) || 0,
-          total_revenue: Number(r.total_revenue) || 0,
-        })),
-        top_channels: topChannelsResult.rows.map((r) => ({
-          ...r,
-          total_sales: Number(r.total_sales) || 0,
-          total_revenue: Number(r.total_revenue) || 0,
-        })),
+    const variation = (curr, prev) => {
+      curr = safe(curr);
+      prev = safe(prev);
+      if (prev === 0) return 0;
+      const diff = ((curr - prev) / prev) * 100;
+      return Number.isFinite(diff) ? Number(diff.toFixed(1)) : 0;
+    };
+
+    const data = {
+      totals: {
+        total_sales: safe(r.current_sales),
+        total_revenue: Number(safe(r.current_revenue).toFixed(2)),
+        avg_ticket: Number(safe(r.current_avg_ticket).toFixed(2)),
       },
-    });
+      variations: {
+        total_sales: variation(r.current_sales, r.prev_sales),
+        total_revenue: variation(r.current_revenue, r.prev_revenue),
+        avg_ticket: variation(r.current_avg_ticket, r.prev_avg_ticket),
+      },
+    };
+
+    res.json({ success: true, params: { start, end }, data });
   } catch (err) {
     next(err);
   }
