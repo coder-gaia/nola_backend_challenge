@@ -2,20 +2,39 @@ import express from "express";
 import { healthCheck } from "../controllers/health.controller.js";
 import analyticsRoutes from "./analytics.routes.js";
 import {
-  getTopProducts,
-  getTopStores,
-  getTopChannels,
   getTopSubBrands,
   getDashboardKpis,
-  getSalesTimeline,
-  getStoreRanking,
-  getStorePerformance,
-  getTopCustomers,
-  getChannelPerformance,
-  getSalesTrend,
   getFinancialOverview,
   getDashboardSummary,
+  getLowMarginProducts,
+  getDeliveryPerformance,
 } from "../controllers/analytics.controller.js";
+
+import {
+  getTopProducts,
+  getTopProductsByPeriod,
+} from "../controllers/products.controller.js";
+import {
+  getStorePerformance,
+  getStoreRanking,
+  getTopStores,
+} from "../controllers/stores.controller.js";
+import {
+  getChannelPerformance,
+  getTopChannels,
+} from "../controllers/channels.controller.js";
+import {
+  getCustomerRetention,
+  getTopCustomers,
+} from "../controllers/customers.controller.js";
+import {
+  getAverageTicket,
+  getAvgTicketComparison,
+} from "../controllers/tickets.controller.js";
+import {
+  getSalesTimeline,
+  getSalesTrend,
+} from "../controllers/sales.controller.js";
 
 const router = express.Router();
 
@@ -34,5 +53,11 @@ router.get("/analytics/channel-performance", getChannelPerformance);
 router.get("/analytics/sales-trend", getSalesTrend);
 router.get("/analytics/financial-overview", getFinancialOverview);
 router.get("/analytics/summary", getDashboardSummary);
+router.get("/analytics/top-products-by-period", getTopProductsByPeriod);
+router.get("/analytics/avg-ticket-comparison", getAvgTicketComparison);
+router.get("/analytics/low-margin-products", getLowMarginProducts);
+router.get("/analytics/delivery-performance", getDeliveryPerformance);
+router.get("/analytics/customer-retention", getCustomerRetention);
+router.get("/analytics/average-ticket", getAverageTicket);
 
 export default router;
