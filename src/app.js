@@ -13,12 +13,19 @@ app.use(
   cors({
     origin: (origin, callback) => {
       console.log("🛰️ CORS request from:", origin);
+
       const allowedOrigins = [
         "https://nola-frontend.vercel.app",
         "http://localhost:5173",
       ];
 
-      if (!origin || allowedOrigins.includes(origin)) {
+      const vercelPreview = /^https:\/\/nola-frontend-[a-z0-9-]+\.vercel\.app$/;
+
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        vercelPreview.test(origin)
+      ) {
         callback(null, true);
       } else {
         console.log("🚫 Blocked CORS from:", origin);
