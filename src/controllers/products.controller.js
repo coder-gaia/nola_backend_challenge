@@ -2,7 +2,7 @@ import { query } from "../config/db.js";
 
 export const getTopProducts = async (req, res, next) => {
   try {
-    const { start, end, channel_id } = req.query;
+    const { start, end, channel_id, limit = 10 } = req.query;
 
     const values = [start, end];
     let whereClause = `WHERE s.created_at BETWEEN $1 AND $2`;
@@ -16,14 +16,17 @@ export const getTopProducts = async (req, res, next) => {
       SELECT 
         p.name AS product_name,
         SUM(ps.quantity) AS total_sales,
-        SUM(ps.total_price) AS total_revenue
+        ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue,
+        ROUND(AVG(ps.total_price)::numeric, 2) AS avg_ticket
       FROM sales s
       JOIN product_sales ps ON ps.sale_id = s.id
       JOIN products p ON p.id = ps.product_id
       ${whereClause}
+        AND s.sale_status_desc = 'COMPLETED'
       GROUP BY p.name
+      HAVING SUM(ps.total_price) > 0
       ORDER BY total_revenue DESC
-      LIMIT 10;
+      LIMIT ${limit};
     `;
 
     const result = await query(sql, values);
@@ -33,11 +36,13 @@ export const getTopProducts = async (req, res, next) => {
       params: { start, end, channel_id },
       data: result.rows.map((r) => ({
         product_name: r.product_name,
-        total_sales: Number(r.total_sales),
-        total_revenue: Number(Number(r.total_revenue).toFixed(2)),
+        total_sales: Number(r.total_sales) || 0,
+        total_revenue: Number(Number(r.total_revenue).toFixed(2)) || 0,
+        avg_ticket: Number(r.avg_ticket) || 0,
       })),
     });
   } catch (err) {
+    console.error("❌ Erro em getTopProducts:", err);
     next(err);
   }
 };

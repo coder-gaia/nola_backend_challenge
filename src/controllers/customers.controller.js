@@ -4,7 +4,7 @@ export const getTopCustomers = async (req, res, next) => {
   try {
     const { start, end, limit = 10 } = req.query;
 
-    const queryText = `
+    const sql = `
       SELECT 
         s.customer_name AS customer,
         COUNT(s.id) AS total_orders,
@@ -15,22 +15,24 @@ export const getTopCustomers = async (req, res, next) => {
         AND s.customer_name IS NOT NULL
         AND s.sale_status_desc = 'COMPLETED'
       GROUP BY s.customer_name
+      HAVING SUM(s.total_amount) > 0
       ORDER BY total_spent DESC
       LIMIT $3;
     `;
 
-    const result = await query(queryText, [start, end, limit]);
+    const result = await query(sql, [start, end, limit]);
 
     res.json({
       success: true,
       data: result.rows.map((r) => ({
         customer: r.customer,
-        total_orders: Number(r.total_orders),
-        total_spent: Number(r.total_spent),
-        avg_ticket: Number(r.avg_ticket),
+        total_orders: Number(r.total_orders) || 0,
+        total_spent: Number(r.total_spent) || 0,
+        avg_ticket: Number(r.avg_ticket) || 0,
       })),
     });
   } catch (err) {
+    console.error("❌ Erro em getTopCustomers:", err);
     next(err);
   }
 };
