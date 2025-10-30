@@ -11,7 +11,20 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: ["https://nola-frontend.vercel.app", "http://localhost:5173"],
+    origin: (origin, callback) => {
+      console.log("🛰️ CORS request from:", origin);
+      const allowedOrigins = [
+        "https://nola-frontend.vercel.app",
+        "http://localhost:5173",
+      ];
+
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("🚫 Blocked CORS from:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
