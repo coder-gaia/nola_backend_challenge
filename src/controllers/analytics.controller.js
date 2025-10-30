@@ -215,8 +215,8 @@ export const getLowMarginProducts = async (req, res, next) => {
           (
             (AVG(ps.base_price) - (AVG(ps.base_price) * $3::numeric))
             / NULLIF(AVG(ps.base_price), 0)
-          )::numeric, 2
-        ) AS margin_percent,
+          )::numeric, 4
+        ) AS margin_ratio,
         SUM(ps.quantity) AS total_sold,
         ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue
       FROM product_sales ps
@@ -224,26 +224,42 @@ export const getLowMarginProducts = async (req, res, next) => {
       JOIN sales s ON s.id = ps.sale_id
       WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
-      ORDER BY margin_percent ASC
+      ORDER BY margin_ratio ASC
       LIMIT $4;
     `;
 
     const values = [start, end, parseFloat(cost_pct), limit];
-
     const result = await query(sql, values);
 
-    const formatted = result.rows.map((r) => ({
-      ...r,
-      avg_price: Number(r.avg_price) || 0,
-      avg_cost: Number(r.avg_cost) || 0,
-      margin_percent: Number(r.margin_percent) || 0,
-      total_sold: Number(r.total_sold) || 0,
-      total_revenue: Number(r.total_revenue) || 0,
-    }));
+    const formatted = result.rows.map((r) => {
+      const avg_price = Number(r.avg_price) || 0;
+      const avg_cost = Number(r.avg_cost) || 0;
+      const ratio = Number(r.margin_ratio);
+
+      let margin_percent = null;
+      if (!isNaN(ratio)) {
+        margin_percent = ratio <= 1 ? ratio * 100 : ratio;
+      }
+
+      return {
+        product_name: r.product_name,
+        avg_price,
+        avg_cost,
+        margin_percent:
+          margin_percent !== null ? Number(margin_percent.toFixed(2)) : null,
+        total_sold: Number(r.total_sold) || 0,
+        total_revenue: Number(r.total_revenue) || 0,
+      };
+    });
 
     res.json({
       success: true,
-      params: { start, end, limit: Number(limit), cost_pct: Number(cost_pct) },
+      params: {
+        start,
+        end,
+        limit: Number(limit),
+        cost_pct: Number(cost_pct),
+      },
       data: formatted,
     });
   } catch (err) {
