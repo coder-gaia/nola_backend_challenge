@@ -25,8 +25,8 @@ export const getTopProducts = async (req, res, next) => {
         p.name AS product_name,
         SUM(ps.quantity) AS total_sold,
         ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue,
-        ROUND(SUM(ps.total_cost)::numeric, 2) AS total_cost,
-        ROUND((SUM(ps.total_price) - SUM(ps.total_cost)) / NULLIF(SUM(ps.total_price), 0) * 100, 2) AS margin_percent
+        ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
+        ROUND((AVG(ps.total_price / NULLIF(ps.quantity, 0)) - AVG(ps.base_price)) / NULLIF(AVG(ps.total_price / NULLIF(ps.quantity, 0)), 0) * 100, 2) AS margin_percent
       FROM product_sales ps
       JOIN products p ON p.id = ps.product_id
       JOIN sales s ON s.id = ps.sale_id
@@ -45,7 +45,7 @@ export const getTopProducts = async (req, res, next) => {
         product_name: r.product_name,
         total_sold: Number(r.total_sold) || 0,
         total_revenue: Number(r.total_revenue) || 0,
-        total_cost: Number(r.total_cost) || 0,
+        avg_price: Number(r.avg_price) || 0,
         margin_percent: Number(r.margin_percent) || 0,
       })),
     };

@@ -218,36 +218,28 @@ export const getLowMarginProducts = async (req, res, next) => {
     if (cached) return res.json(cached);
 
     const sql = `
-      SELECT
+      SELECT 
         p.name AS product_name,
+        ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
+        ROUND(AVG(ps.base_price * $3)::numeric, 2) AS avg_cost,
+        ROUND((1 - $3)::numeric * 100, 2) AS margin_percent,
         SUM(ps.quantity) AS total_sold,
-        ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue,
-        ROUND(SUM(ps.total_cost)::numeric, 2) AS total_cost,
-        ROUND((SUM(ps.total_price) - SUM(ps.total_cost)) / NULLIF(SUM(ps.total_price), 0) * 100, 2) AS margin_percent
+        ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue
       FROM product_sales ps
       JOIN products p ON p.id = ps.product_id
       JOIN sales s ON s.id = ps.sale_id
       WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
-      HAVING (SUM(ps.total_cost) / NULLIF(SUM(ps.total_price), 0)) > $3
+      HAVING (AVG(ps.base_price * $3) / NULLIF(AVG(ps.base_price), 0)) > $3
       ORDER BY margin_percent ASC
       LIMIT $4;
     `;
 
     const result = await query(sql, [start, end, cost_pct, limit]);
-    const response = {
-      success: true,
-      data: result.rows.map((r) => ({
-        product_name: r.product_name,
-        total_sold: Number(r.total_sold) || 0,
-        total_revenue: Number(r.total_revenue) || 0,
-        total_cost: Number(r.total_cost) || 0,
-        margin_percent: Number(r.margin_percent) || 0,
-      })),
-    };
+    const response = { success: true, data: result.rows };
 
     cache.set(key, response);
-    return res.json(response);
+    res.json(response);
   } catch (err) {
     console.error("❌ Erro em getLowMarginProducts:", err);
     next(err);
