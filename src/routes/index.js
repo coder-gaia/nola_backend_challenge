@@ -1,6 +1,6 @@
 import express from "express";
 import { healthCheck } from "../controllers/health.controller.js";
-import analyticsRoutes from "./analytics.routes.js";
+//import analyticsRoutes from "./analytics.routes.js";
 import {
   getTopSubBrands,
   getDashboardKpis,
@@ -39,7 +39,7 @@ import {
 const router = express.Router();
 
 router.get("/health", healthCheck);
-router.use("/analytics", analyticsRoutes);
+//router.use("/analytics", analyticsRoutes);
 router.get("/analytics/top-products", getTopProducts);
 router.get("/analytics/top-stores", getTopStores);
 router.get("/analytics/top-channels", getTopChannels);

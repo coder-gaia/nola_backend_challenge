@@ -1,0 +1,22 @@
+export default {
+  testEnvironment: "node",
+  transform: {
+    "^.+\\.js$": "babel-jest",
+  },
+  testMatch: ["**/tests/**/*.test.js"],
+  clearMocks: true,
+  collectCoverage: true,
+  collectCoverageFrom: [
+    "src/controllers/**/*.js",
+    "src/routes/**/*.js",
+    "src/services/**/*.js",
+    "src/models/**/*.js",
+    "src/utils/**/*.js",
+    "!**/node_modules/**",
+    "!**/tests/**",
+  ],
+  moduleDirectories: ["node_modules", "src", "."],
+  verbose: true,
+  coverageReporters: ["text", "lcov", "html"],
+  coverageDirectory: "coverage",
+};
