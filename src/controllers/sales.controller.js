@@ -1,4 +1,7 @@
 import { query } from "../config/db.js";
+import NodeCache from "node-cache";
+
+const cache = new NodeCache({ stdTTL: 300 });
 
 export const getSalesTimeline = async (req, res, next) => {
   try {
@@ -35,51 +38,33 @@ export const getSalesTimeline = async (req, res, next) => {
 
 export const getSalesTrend = async (req, res, next) => {
   try {
-    const { start, end, interval = "month" } = req.query;
+    const key = "salesTrend:" + JSON.stringify(req.query);
+    const cached = cache.get(key);
+    if (cached) return res.json(cached);
 
-    let dateTrunc;
-    switch (interval) {
-      case "day":
-        dateTrunc = "day";
-        break;
-      case "week":
-        dateTrunc = "week";
-        break;
-      case "month":
-      default:
-        dateTrunc = "month";
-        break;
-    }
+    const { start, end, group = "day" } = req.query;
+    const dateTrunc =
+      group === "month" ? "month" : group === "week" ? "week" : "day";
 
     const sql = `
       SELECT 
-        DATE_TRUNC('${dateTrunc}', s.created_at) AS period,
-        COUNT(DISTINCT s.id) AS total_sales,
-        SUM(s.total_amount) AS total_revenue
-      FROM sales s
-      WHERE s.created_at BETWEEN $1 AND $2
+        DATE_TRUNC('${dateTrunc}', created_at) AS period,
+        COUNT(id) AS total_sales,
+        ROUND(SUM(total_amount)::numeric, 2) AS total_revenue
+      FROM sales
+      WHERE created_at BETWEEN $1 AND $2
       GROUP BY 1
-      ORDER BY period;
+      ORDER BY 1
+      LIMIT 365;
     `;
 
-    const values = [start, end];
-    const result = await query(sql, values);
+    const result = await query(sql, [start, end]);
+    const response = { success: true, data: result.rows };
 
-    const formatted = result.rows.map((row) => ({
-      period: new Date(row.period).toISOString().split("T")[0],
-      total_sales: Number(row.total_sales),
-      total_revenue: `R$ ${Number(row.total_revenue).toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`,
-    }));
-
-    res.json({
-      success: true,
-      params: { start, end, interval },
-      data: formatted,
-    });
+    cache.set(key, response);
+    res.json(response);
   } catch (err) {
+    console.error("Erro em getSalesTrend:", err);
     next(err);
   }
 };

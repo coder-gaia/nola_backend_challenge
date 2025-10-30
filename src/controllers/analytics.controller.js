@@ -1,4 +1,7 @@
 import { query } from "../config/db.js";
+import NodeCache from "node-cache";
+
+const cache = new NodeCache({ stdTTL: 300 });
 
 export const getTopSubBrands = async (req, res, next) => {
   try {
@@ -204,19 +207,18 @@ export const getDashboardSummary = async (req, res, next) => {
 
 export const getLowMarginProducts = async (req, res, next) => {
   try {
-    const { start, end, limit = 10, cost_pct = 0.65 } = req.query;
+    const key = "lowMargin:" + JSON.stringify(req.query);
+    const cached = cache.get(key);
+    if (cached) return res.json(cached);
+
+    const { start, end, cost_pct = 0.65, limit = 10 } = req.query;
 
     const sql = `
       SELECT 
         p.name AS product_name,
         ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
-        ROUND((AVG(ps.base_price) * $3::numeric)::numeric, 2) AS avg_cost,
-        ROUND(
-          (
-            (AVG(ps.base_price) - (AVG(ps.base_price) * $3::numeric))
-            / NULLIF(AVG(ps.base_price), 0)
-          )::numeric, 4
-        ) AS margin_ratio,
+        ROUND(AVG(ps.base_price * $3)::numeric, 2) AS avg_cost,
+        ROUND((1 - $3)::numeric * 100, 2) AS margin_percent,
         SUM(ps.quantity) AS total_sold,
         ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue
       FROM product_sales ps
@@ -224,49 +226,20 @@ export const getLowMarginProducts = async (req, res, next) => {
       JOIN sales s ON s.id = ps.sale_id
       WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
-      ORDER BY margin_ratio ASC
+      ORDER BY margin_percent ASC
       LIMIT $4;
     `;
 
-    const values = [start, end, parseFloat(cost_pct), limit];
-    const result = await query(sql, values);
+    const result = await query(sql, [start, end, cost_pct, limit]);
+    const response = { success: true, data: result.rows };
 
-    const formatted = result.rows.map((r) => {
-      const avg_price = Number(r.avg_price) || 0;
-      const avg_cost = Number(r.avg_cost) || 0;
-      const ratio = Number(r.margin_ratio);
-
-      let margin_percent = null;
-      if (!isNaN(ratio)) {
-        margin_percent = ratio <= 1 ? ratio * 100 : ratio;
-      }
-
-      return {
-        product_name: r.product_name,
-        avg_price,
-        avg_cost,
-        margin_percent:
-          margin_percent !== null ? Number(margin_percent.toFixed(2)) : null,
-        total_sold: Number(r.total_sold) || 0,
-        total_revenue: Number(r.total_revenue) || 0,
-      };
-    });
-
-    res.json({
-      success: true,
-      params: {
-        start,
-        end,
-        limit: Number(limit),
-        cost_pct: Number(cost_pct),
-      },
-      data: formatted,
-    });
+    cache.set(key, response);
+    res.json(response);
   } catch (err) {
+    console.error("Erro em getLowMarginProducts:", err);
     next(err);
   }
 };
-
 export const getDeliveryPerformance = async (req, res, next) => {
   try {
     const { start, end, group_by = null } = req.query;
