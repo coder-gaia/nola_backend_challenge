@@ -3,9 +3,15 @@ import NodeCache from "node-cache";
 
 const cache = new NodeCache({ stdTTL: 300 });
 
+const safeNum = (v) =>
+  v === null || v === undefined || isNaN(v) ? 0 : Number(v);
+
 export const getTopSubBrands = async (req, res, next) => {
   try {
     const { start, end } = req.query;
+    const key = `topSubBrands:${start}:${end}`;
+    const cached = cache.get(key);
+    if (cached) return res.json(cached);
 
     const sql = `
       SELECT 
@@ -21,20 +27,17 @@ export const getTopSubBrands = async (req, res, next) => {
       ORDER BY total_revenue DESC
       LIMIT 10;
     `;
-
     const result = await query(sql, [start, end]);
-
-    const formattedRows = result.rows.map((row) => ({
-      sub_brand_name: row.sub_brand_name,
-      total_sales: Number(row.total_sales) || 0,
-      total_revenue: Number(row.total_revenue) || 0,
-      avg_ticket: Number(row.avg_ticket) || 0,
+    const data = result.rows.map((r) => ({
+      sub_brand_name: r.sub_brand_name,
+      total_sales: safeNum(r.total_sales),
+      total_revenue: safeNum(r.total_revenue),
+      avg_ticket: safeNum(r.avg_ticket),
     }));
 
-    res.json({
-      success: true,
-      data: formattedRows,
-    });
+    const response = { success: true, data };
+    cache.set(key, response);
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -43,52 +46,56 @@ export const getTopSubBrands = async (req, res, next) => {
 export const getDashboardKpis = async (req, res, next) => {
   try {
     const { start, end, prevStart, prevEnd } = req.query;
+    const key = `dashboardKpis:${start}:${end}:${prevStart}:${prevEnd}`;
+    const cached = cache.get(key);
+    if (cached) return res.json(cached);
 
-    const totalQuery = `
+    const sql = `
+      WITH current AS (
+        SELECT 
+          COUNT(*) AS total_sales,
+          SUM(total_amount) AS total_revenue,
+          AVG(total_amount) AS avg_ticket,
+          COUNT(DISTINCT customer_id) AS total_customers
+        FROM sales
+        WHERE created_at BETWEEN $1 AND $2
+      ),
+      prev AS (
+        SELECT SUM(total_amount) AS prev_revenue
+        FROM sales
+        WHERE created_at BETWEEN $3 AND $4
+      )
       SELECT 
-        COUNT(*) AS total_sales,
-        SUM(total_amount) AS total_revenue,
-        ROUND(AVG(total_amount)::numeric, 2) AS avg_ticket
-      FROM sales
-      WHERE created_at BETWEEN $1 AND $2;
+        c.*, p.prev_revenue
+      FROM current c, prev p;
     `;
 
-    const totalResult = await query(totalQuery, [start, end]);
-    const { total_sales, total_revenue, avg_ticket } = totalResult.rows[0];
+    const result = await query(sql, [start, end, prevStart, prevEnd]);
+    const r = result.rows[0];
+    const previous = safeNum(r.prev_revenue);
 
-    const customerQuery = `
-      SELECT COUNT(DISTINCT customer_id) AS total_customers
-      FROM sales
-      WHERE created_at BETWEEN $1 AND $2;
-    `;
-    const customerResult = await query(customerQuery, [start, end]);
-    const { total_customers } = customerResult.rows[0];
+    const sales_growth =
+      previous > 0
+        ? Number(
+            (((safeNum(r.total_revenue) - previous) / previous) * 100).toFixed(
+              2
+            )
+          )
+        : 0;
 
-    const growthQuery = `
-      SELECT 
-        SUM(total_amount) AS previous_revenue
-      FROM sales
-      WHERE created_at BETWEEN $1 AND $2;
-    `;
-    const prevResult = await query(growthQuery, [prevStart, prevEnd]);
-    const previous_revenue = prevResult.rows[0].previous_revenue || 0;
-
-    let sales_growth = 0;
-    if (previous_revenue > 0) {
-      sales_growth =
-        ((total_revenue - previous_revenue) / previous_revenue) * 100;
-    }
-
-    res.json({
+    const response = {
       success: true,
       data: {
-        total_sales: Number(total_sales) || 0,
-        total_revenue: Number(total_revenue) || 0,
-        avg_ticket: Number(avg_ticket) || 0,
-        total_customers: Number(total_customers) || 0,
-        sales_growth: Number(sales_growth.toFixed(2)) || 0,
+        total_sales: safeNum(r.total_sales),
+        total_revenue: safeNum(r.total_revenue),
+        avg_ticket: safeNum(r.avg_ticket),
+        total_customers: safeNum(r.total_customers),
+        sales_growth,
       },
-    });
+    };
+
+    cache.set(key, response);
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -136,6 +143,10 @@ export const getDashboardSummary = async (req, res, next) => {
         .json({ success: false, message: "start e end são obrigatórios" });
     }
 
+    const key = `dashboardSummary:${start}:${end}`;
+    const cached = cache.get(key);
+    if (cached) return res.json(cached);
+
     const sql = `
       WITH params AS (
         SELECT 
@@ -144,62 +155,56 @@ export const getDashboardSummary = async (req, res, next) => {
           ($2::date - $1::date + 1) AS num_days
       ),
       current_period AS (
-        SELECT 
-          COUNT(*) AS total_sales,
-          SUM(total_amount) AS total_revenue,
-          AVG(total_amount) AS avg_ticket
+        SELECT COUNT(*) AS total_sales,
+               SUM(total_amount) AS total_revenue,
+               AVG(total_amount) AS avg_ticket
         FROM sales s, params p
         WHERE s.created_at BETWEEN p.start_date AND p.end_date
       ),
-      previous_period AS (
-        SELECT 
-          COUNT(*) AS total_sales,
-          SUM(total_amount) AS total_revenue,
-          AVG(total_amount) AS avg_ticket
+      prev_period AS (
+        SELECT COUNT(*) AS total_sales,
+               SUM(total_amount) AS total_revenue,
+               AVG(total_amount) AS avg_ticket
         FROM sales s, params p
         WHERE s.created_at BETWEEN 
-          (p.start_date - (p.num_days || ' days')::interval) AND 
-          (p.start_date - INTERVAL '1 day')
+          (p.start_date - (p.num_days || ' days')::interval)
+          AND (p.start_date - INTERVAL '1 day')
       )
       SELECT 
-        c.total_sales AS current_sales,
-        p.total_sales AS prev_sales,
-        c.total_revenue AS current_revenue,
-        p.total_revenue AS prev_revenue,
-        c.avg_ticket AS current_avg_ticket,
-        p.avg_ticket AS prev_avg_ticket
-      FROM current_period c, previous_period p;
+        c.total_sales AS curr_sales, p.total_sales AS prev_sales,
+        c.total_revenue AS curr_rev, p.total_revenue AS prev_rev,
+        c.avg_ticket AS curr_ticket, p.avg_ticket AS prev_ticket
+      FROM current_period c, prev_period p;
     `;
 
-    const values = [start, end];
-    const result = await query(sql, values);
+    const result = await query(sql, [start, end]);
     const r = result.rows[0] || {};
 
-    const safe = (v) =>
-      v === null || v === undefined || isNaN(v) ? 0 : Number(v);
-
     const variation = (curr, prev) => {
-      curr = safe(curr);
-      prev = safe(prev);
-      if (prev === 0) return 0;
-      const diff = ((curr - prev) / prev) * 100;
-      return Number.isFinite(diff) ? Number(diff.toFixed(1)) : 0;
+      curr = safeNum(curr);
+      prev = safeNum(prev);
+      return prev > 0 ? Number((((curr - prev) / prev) * 100).toFixed(1)) : 0;
     };
 
-    const data = {
-      totals: {
-        total_sales: safe(r.current_sales),
-        total_revenue: Number(safe(r.current_revenue).toFixed(2)),
-        avg_ticket: Number(safe(r.current_avg_ticket).toFixed(2)),
-      },
-      variations: {
-        total_sales: variation(r.current_sales, r.prev_sales),
-        total_revenue: variation(r.current_revenue, r.prev_revenue),
-        avg_ticket: variation(r.current_avg_ticket, r.prev_avg_ticket),
+    const response = {
+      success: true,
+      params: { start, end },
+      data: {
+        totals: {
+          total_sales: safeNum(r.curr_sales),
+          total_revenue: safeNum(r.curr_rev),
+          avg_ticket: safeNum(r.curr_ticket),
+        },
+        variations: {
+          total_sales: variation(r.curr_sales, r.prev_sales),
+          total_revenue: variation(r.curr_rev, r.prev_rev),
+          avg_ticket: variation(r.curr_ticket, r.prev_ticket),
+        },
       },
     };
 
-    res.json({ success: true, params: { start, end }, data });
+    cache.set(key, response);
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -207,11 +212,10 @@ export const getDashboardSummary = async (req, res, next) => {
 
 export const getLowMarginProducts = async (req, res, next) => {
   try {
-    const key = "lowMargin:" + JSON.stringify(req.query);
+    const { start, end, cost_pct = 0.65, limit = 10 } = req.query;
+    const key = `lowMargin:${start}:${end}:${cost_pct}:${limit}`;
     const cached = cache.get(key);
     if (cached) return res.json(cached);
-
-    const { start, end, cost_pct = 0.65, limit = 10 } = req.query;
 
     const sql = `
       SELECT 
@@ -226,6 +230,7 @@ export const getLowMarginProducts = async (req, res, next) => {
       JOIN sales s ON s.id = ps.sale_id
       WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
+      HAVING (AVG(ps.base_price * $3) / NULLIF(AVG(ps.base_price), 0)) > $3
       ORDER BY margin_percent ASC
       LIMIT $4;
     `;
