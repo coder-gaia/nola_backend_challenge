@@ -8,7 +8,15 @@ import errorHandler from "./middleware/errorHandler.js";
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+
+app.use(
+  cors({
+    origin: ["https://nola-frontend.vercel.app", "http://localhost:5173"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
+
 app.use(helmet());
 app.use(morgan("dev"));
 
