@@ -5,8 +5,8 @@ const cache = new NodeCache({ stdTTL: 300 });
 
 export const getTopProducts = async (req, res, next) => {
   try {
-    const { start, end, limit = 10 } = req.query;
-    const key = `topProducts:${start}:${end}:${limit}`;
+    const { start, end, limit = 10, cost_pct = 0.65 } = req.query;
+    const key = `topProducts:${start}:${end}:${limit}:${cost_pct}`;
     const cached = cache.get(key);
     if (cached) return res.json(cached);
 
@@ -15,18 +15,19 @@ export const getTopProducts = async (req, res, next) => {
         p.name AS product_name,
         SUM(ps.quantity) AS total_sold,
         ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue,
-        ROUND(AVG(ps.total_price)::numeric, 2) AS avg_price,
-        ROUND(AVG(ps.total_cost)::numeric, 2) AS avg_cost
+        ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
+        ROUND(AVG(ps.base_price * $3)::numeric, 2) AS avg_cost,
+        ROUND(((AVG(ps.base_price) - AVG(ps.base_price * $3)) / AVG(ps.base_price)) * 100, 2) AS margin_percent
       FROM product_sales ps
       JOIN products p ON p.id = ps.product_id
       JOIN sales s ON s.id = ps.sale_id
       WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
       ORDER BY total_revenue DESC
-      LIMIT $3;
+      LIMIT $4;
     `;
 
-    const result = await query(sql, [start, end, limit]);
+    const result = await query(sql, [start, end, cost_pct, limit]);
     const response = { success: true, data: result.rows };
 
     cache.set(key, response);
