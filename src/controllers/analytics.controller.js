@@ -213,44 +213,26 @@ export const getDashboardSummary = async (req, res, next) => {
 export const getLowMarginProducts = async (req, res, next) => {
   try {
     const { start, end, cost_pct = 0.65, limit = 10 } = req.query;
-    const key = `lowMargin:${start}:${end}:${cost_pct}:${limit}`;
 
+    const key = `lowMargin:${start}:${end}:${cost_pct}:${limit}`;
     const cached = cache.get(key);
-    if (cached) return res.json({ ...cached, cached: true });
+    if (cached) return res.json(cached);
 
     const sql = `
-      SELECT 
-        p.name AS product_name,
-        ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
-        ROUND(AVG(ps.base_price * $3)::numeric, 2) AS avg_cost,
-        ROUND((1 - $3)::numeric * 100, 2) AS margin_percent,
-        SUM(ps.quantity) AS total_sold,
-        ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue
-      FROM product_sales ps
-      JOIN products p ON p.id = ps.product_id
-      JOIN sales s ON s.id = ps.sale_id
-      WHERE s.created_at BETWEEN $1 AND $2
-      GROUP BY p.name
-      ORDER BY margin_percent ASC
-      LIMIT $4;
+      SELECT *
+      FROM mv_product_margin_daily
+      WHERE sale_date BETWEEN $1 AND $2
+      ORDER BY (total_revenue / NULLIF(total_sold, 0)) ASC
+      LIMIT $3;
     `;
 
-    const result = await query(sql, [start, end, cost_pct, limit]);
-
+    const result = await query(sql, [start, end, limit]);
     const response = { success: true, data: result.rows };
 
-    cache.set(key, response, 300);
-
-    res.set({
-      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-      "Surrogate-Control": "no-store",
-    });
-
+    cache.set(key, response);
     res.json(response);
   } catch (err) {
-    console.error("❌ Erro em getLowMarginProducts:", err);
+    console.error("Erro em getLowMarginProducts:", err);
     next(err);
   }
 };
@@ -258,6 +240,9 @@ export const getLowMarginProducts = async (req, res, next) => {
 export const getDeliveryPerformance = async (req, res, next) => {
   try {
     const { start, end, group_by = null } = req.query;
+    const key = `deliveryPerformance:${start}:${end}:${group_by || "none"}`;
+    const cached = cache.get(key);
+    if (cached) return res.json(cached);
 
     let groupClause = "";
     let selectGroup = "";
@@ -282,9 +267,9 @@ export const getDeliveryPerformance = async (req, res, next) => {
         ) AS late_rate,
         COUNT(*) AS total_orders
         ${selectGroup}
-      FROM sales s
+      FROM mv_delivery_daily s
       LEFT JOIN stores st ON st.id = s.store_id
-      WHERE s.created_at BETWEEN $1 AND $2
+      WHERE s.sale_date BETWEEN $1 AND $2
       ${groupClause}
       ORDER BY avg_delivery_minutes ASC;
     `;
@@ -300,11 +285,14 @@ export const getDeliveryPerformance = async (req, res, next) => {
       total_orders: Number(row.total_orders) || 0,
     }));
 
-    res.json({
+    const response = {
       success: true,
       params: { start, end, group_by },
       data: formatted,
-    });
+    };
+
+    cache.set(key, response);
+    res.json(response);
   } catch (err) {
     next(err);
   }
