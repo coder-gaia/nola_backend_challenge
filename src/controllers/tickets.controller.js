@@ -7,20 +7,21 @@ export const getAvgTicketComparison = async (req, res, next) => {
     const groupColumn = group_by === "store" ? "st.name" : "c.name";
     const joinTable =
       group_by === "store"
-        ? "JOIN stores st ON st.id = mv.store_id"
-        : "JOIN channels c ON c.id = mv.channel_id";
+        ? "JOIN stores st ON st.id = s.store_id"
+        : "JOIN channels c ON c.id = s.channel_id";
 
     const sql = `
-    SELECT 
-    ${groupColumn} AS group_name,
-    mv.total_sales,
-    ROUND(mv.total_revenue::numeric, 2) AS total_revenue,
-    ROUND(mv.avg_ticket::numeric, 2) AS avg_ticket
-    FROM avg_ticket_comparison_mv mv
-    ${joinTable}
-    WHERE mv.last_sale_at BETWEEN $1 AND $2
-    ORDER BY mv.avg_ticket DESC;
-`;
+      SELECT 
+        ${groupColumn} AS group_name,
+        COUNT(s.id) AS total_sales,
+        ROUND(SUM(s.total_amount)::numeric, 2) AS total_revenue,
+        ROUND(AVG(s.total_amount)::numeric, 2) AS avg_ticket
+      FROM sales s
+      ${joinTable}
+      WHERE s.created_at BETWEEN $1 AND $2
+      GROUP BY ${groupColumn}
+      ORDER BY avg_ticket DESC;
+    `;
 
     const result = await query(sql, [start, end]);
 
