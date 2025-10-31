@@ -11,13 +11,8 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: [
-      "https://nola-frontend-9y7bxfqtg-codergaias-projects.vercel.app",
-      "https://nola-frontend-qwuxys18s-codergaias-projects.vercel.app",
-      "http://localhost:5173",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "OPTIONS"],
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -26,6 +21,13 @@ app.use(helmet());
 app.use(morgan("dev"));
 
 app.use("/api", routes);
+
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS,PUT,DELETE");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
 
 app.use(errorHandler);
 
