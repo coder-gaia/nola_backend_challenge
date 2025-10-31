@@ -17,7 +17,7 @@ export const getTopProducts = async (req, res, next) => {
         ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue,
         ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
         ROUND(AVG(ps.base_price * $3)::numeric, 2) AS avg_cost,
-        ROUND(((AVG(ps.base_price) - AVG(ps.base_price * $3)) / AVG(ps.base_price)) * 100, 2) AS margin_percent
+        ROUND(((AVG(ps.base_price) - AVG(ps.base_price * $3)) / NULLIF(AVG(ps.base_price), 0)) * 100, 2) AS margin_percent
       FROM product_sales ps
       JOIN products p ON p.id = ps.product_id
       JOIN sales s ON s.id = ps.sale_id
@@ -28,7 +28,18 @@ export const getTopProducts = async (req, res, next) => {
     `;
 
     const result = await query(sql, [start, end, cost_pct, limit]);
-    const response = { success: true, data: result.rows };
+
+    const response = {
+      success: true,
+      data: result.rows.map((r) => ({
+        product_name: r.product_name,
+        total_sold: Number(r.total_sold),
+        total_revenue: Number(r.total_revenue),
+        avg_price: Number(r.avg_price),
+        avg_cost: Number(r.avg_cost),
+        margin_percent: Number(r.margin_percent),
+      })),
+    };
 
     cache.set(key, response);
     res.json(response);
