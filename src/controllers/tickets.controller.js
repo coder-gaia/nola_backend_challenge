@@ -1,4 +1,7 @@
 import { query } from "../config/db.js";
+import NodeCache from "node-cache";
+
+const cache = new NodeCache({ stdTTL: 300 });
 
 export const getAvgTicketComparison = async (req, res, next) => {
   try {
