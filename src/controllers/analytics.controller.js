@@ -214,8 +214,9 @@ export const getLowMarginProducts = async (req, res, next) => {
   try {
     const { start, end, cost_pct = 0.65, limit = 10 } = req.query;
     const key = `lowMargin:${start}:${end}:${cost_pct}:${limit}`;
+
     const cached = cache.get(key);
-    if (cached) return res.json(cached);
+    if (cached) return res.json({ ...cached, cached: true });
 
     const sql = `
       SELECT 
@@ -230,7 +231,6 @@ export const getLowMarginProducts = async (req, res, next) => {
       JOIN sales s ON s.id = ps.sale_id
       WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
-      HAVING (AVG(ps.base_price * $3) / NULLIF(AVG(ps.base_price), 0)) > $3
       ORDER BY margin_percent ASC
       LIMIT $4;
     `;
@@ -238,15 +238,15 @@ export const getLowMarginProducts = async (req, res, next) => {
     const result = await query(sql, [start, end, cost_pct, limit]);
 
     const response = { success: true, data: result.rows };
-    cache.set(key, response);
 
-    res.set(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate"
-    );
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
-    res.set("Surrogate-Control", "no-store");
+    cache.set(key, response, 300);
+
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+      "Surrogate-Control": "no-store",
+    });
 
     res.json(response);
   } catch (err) {
