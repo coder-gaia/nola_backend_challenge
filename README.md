@@ -159,7 +159,7 @@ npm run test:coverage
 
 ## 👨‍💻 Autor
 
-**Alexandre Silva**  
+**Alexandre Gaia Silva**  
 Desafio: _God Level Coder - Nola Analytics_  
 Backend: [https://nola-challenge.onrender.com](https://nola-challenge.onrender.com)
 
