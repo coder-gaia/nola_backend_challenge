@@ -22,7 +22,8 @@ app.use(
   })
 );
 
-app.options("*", cors());
+app.options("/*", cors());
+
 app.use(helmet());
 app.use(morgan("dev"));
 
