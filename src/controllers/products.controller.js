@@ -5,53 +5,32 @@ const cache = new NodeCache({ stdTTL: 300 });
 
 export const getTopProducts = async (req, res, next) => {
   try {
-    const { start, end, channel_id, limit = 10 } = req.query;
-    const key = `topProducts:${start}:${end}:${channel_id || "all"}:${limit}`;
+    const { start, end, limit = 10 } = req.query;
+    const key = `topProducts:${start}:${end}:${limit}`;
     const cached = cache.get(key);
     if (cached) return res.json(cached);
 
-    const values = [start, end];
-    let whereClause = `WHERE s.created_at BETWEEN $1 AND $2`;
-
-    if (channel_id) {
-      values.push(channel_id);
-      whereClause += ` AND s.channel_id = $${values.length}`;
-    }
-
-    values.push(limit);
-
     const sql = `
-      SELECT
+      SELECT 
         p.name AS product_name,
         SUM(ps.quantity) AS total_sold,
         ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue,
-        ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
-        ROUND((AVG(ps.total_price / NULLIF(ps.quantity, 0)) - AVG(ps.base_price)) / NULLIF(AVG(ps.total_price / NULLIF(ps.quantity, 0)), 0) * 100, 2) AS margin_percent
+        ROUND(AVG(ps.total_price)::numeric, 2) AS avg_price,
+        ROUND(AVG(ps.total_cost)::numeric, 2) AS avg_cost
       FROM product_sales ps
       JOIN products p ON p.id = ps.product_id
       JOIN sales s ON s.id = ps.sale_id
-      ${whereClause}
+      WHERE s.created_at BETWEEN $1 AND $2
       GROUP BY p.name
       ORDER BY total_revenue DESC
-      LIMIT $${values.length};
+      LIMIT $3;
     `;
 
-    const result = await query(sql, values);
-
-    const response = {
-      success: true,
-      params: { start, end, channel_id },
-      data: result.rows.map((r) => ({
-        product_name: r.product_name,
-        total_sold: Number(r.total_sold) || 0,
-        total_revenue: Number(r.total_revenue) || 0,
-        avg_price: Number(r.avg_price) || 0,
-        margin_percent: Number(r.margin_percent) || 0,
-      })),
-    };
+    const result = await query(sql, [start, end, limit]);
+    const response = { success: true, data: result.rows };
 
     cache.set(key, response);
-    return res.json(response);
+    res.json(response);
   } catch (err) {
     console.error("❌ Erro em getTopProducts:", err);
     next(err);
