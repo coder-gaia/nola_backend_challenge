@@ -219,21 +219,18 @@ export const getLowMarginProducts = async (req, res, next) => {
     if (cached) return res.json({ ...cached, cached: true });
 
     const sql = `
-      SELECT 
-        p.name AS product_name,
-        ROUND(AVG(ps.base_price)::numeric, 2) AS avg_price,
-        ROUND(AVG(ps.base_price * $3)::numeric, 2) AS avg_cost,
-        ROUND((1 - $3)::numeric * 100, 2) AS margin_percent,
-        SUM(ps.quantity) AS total_sold,
-        ROUND(SUM(ps.total_price)::numeric, 2) AS total_revenue
-      FROM product_sales ps
-      JOIN products p ON p.id = ps.product_id
-      JOIN sales s ON s.id = ps.sale_id
-      WHERE s.created_at BETWEEN $1 AND $2
-      GROUP BY p.name
-      ORDER BY margin_percent ASC
-      LIMIT $4;
-    `;
+    SELECT 
+    product_name,
+    avg_price,
+    ROUND(avg_price * $3, 2) AS avg_cost,
+    ROUND((1 - $3) * 100, 2) AS margin_percent,
+    total_sold,
+    total_revenue
+    FROM low_margin_products_mv
+    WHERE last_sale_at BETWEEN $1 AND $2
+    ORDER BY margin_percent ASC
+    LIMIT $4;
+`;
 
     const result = await query(sql, [start, end, cost_pct, limit]);
 
