@@ -11,32 +11,18 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      console.log("🛰️ CORS request from:", origin);
-
-      const allowedOrigins = [
-        "https://nola-frontend.vercel.app",
-        "http://localhost:5173",
-      ];
-
-      const vercelPreview = /^https:\/\/nola-frontend-[a-z0-9-]+\.vercel\.app$/;
-
-      if (
-        !origin ||
-        allowedOrigins.includes(origin) ||
-        vercelPreview.test(origin)
-      ) {
-        callback(null, true);
-      } else {
-        console.log("🚫 Blocked CORS from:", origin);
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    origin: [
+      "https://nola-frontend-9y7bxfqtg-codergaias-projects.vercel.app",
+      "https://nola-frontend-qwuxys18s-codergaias-projects.vercel.app",
+      "http://localhost:5173",
+    ],
     credentials: true,
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
+app.options("*", cors());
 app.use(helmet());
 app.use(morgan("dev"));
 

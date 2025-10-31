@@ -236,9 +236,18 @@ export const getLowMarginProducts = async (req, res, next) => {
     `;
 
     const result = await query(sql, [start, end, cost_pct, limit]);
-    const response = { success: true, data: result.rows };
 
+    const response = { success: true, data: result.rows };
     cache.set(key, response);
+
+    res.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    res.set("Surrogate-Control", "no-store");
+
     res.json(response);
   } catch (err) {
     console.error("❌ Erro em getLowMarginProducts:", err);
