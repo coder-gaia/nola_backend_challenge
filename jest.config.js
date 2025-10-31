@@ -1,8 +1,6 @@
 export default {
   testEnvironment: "node",
-  transform: {
-    "^.+\\.js$": "babel-jest",
-  },
+  transform: {},
   testMatch: ["**/tests/**/*.test.js"],
   clearMocks: true,
   collectCoverage: true,

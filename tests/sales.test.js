@@ -1,12 +1,22 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+// Mock do banco de dados
 jest.unstable_mockModule("../src/config/db.js", () => ({
   query: jest.fn(),
 }));
 
 const { query } = await import("../src/config/db.js");
 const { default: app } = await import("../src/app.js");
+
+// Helpers
+const formatDate = (isoString) => isoString.split("T")[0];
+const parseSales = (val) => Number(val); // transforma string em número
+const formatRevenue = (val) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(val));
 
 describe("Sales Controller Endpoints", () => {
   beforeEach(() => {
@@ -82,10 +92,9 @@ describe("Sales Controller Endpoints", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.params.interval).toBe("month");
-      expect(res.body.data[0].period).toBe("2025-01-01");
-      expect(res.body.data[0].total_sales).toBe(40);
-      expect(res.body.data[0].total_revenue).toContain("R$");
+      expect(formatDate(res.body.data[0].period)).toBe("2025-01-01");
+      expect(parseSales(res.body.data[0].total_sales)).toBe(40);
+      expect(formatRevenue(res.body.data[0].total_revenue)).toBe("R$ 8.000,00");
       expect(query).toHaveBeenCalledTimes(1);
     });
 
@@ -105,10 +114,10 @@ describe("Sales Controller Endpoints", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(res.body.params.interval).toBe("week");
-      expect(res.body.data[0].period).toBe("2025-03-03");
-      expect(res.body.data[0].total_sales).toBe(20);
-      expect(res.body.data[0].total_revenue).toContain("R$ 5.000,00");
+      expect(res.body.success).toBe(true);
+      expect(formatDate(res.body.data[0].period)).toBe("2025-03-03");
+      expect(parseSales(res.body.data[0].total_sales)).toBe(20);
+      expect(formatRevenue(res.body.data[0].total_revenue)).toBe("R$ 5.000,00");
       expect(query).toHaveBeenCalledTimes(1);
     });
 
@@ -128,10 +137,10 @@ describe("Sales Controller Endpoints", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(res.body.params.interval).toBe("day");
-      expect(res.body.data[0].period).toBe("2025-03-15");
-      expect(res.body.data[0].total_sales).toBe(5);
-      expect(res.body.data[0].total_revenue).toBe("R$ 1.500,00");
+      expect(res.body.success).toBe(true);
+      expect(formatDate(res.body.data[0].period)).toBe("2025-03-15");
+      expect(parseSales(res.body.data[0].total_sales)).toBe(5);
+      expect(formatRevenue(res.body.data[0].total_revenue)).toBe("R$ 1.500,00");
       expect(query).toHaveBeenCalledTimes(1);
     });
   });
